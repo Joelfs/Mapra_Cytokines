@@ -1,0 +1,7 @@
+*.png
+*.pdf
+*.h5ad
+*.tsv
+*.csv
+*.txt
+/data

@@ -6,7 +6,9 @@ This folder is set up so someone else can pick up the analysis without re-derivi
 
 ## Contents
 
-- `deg_conditions.ipynb` — main pipeline: pseudobulk aggregation (sum) → sample QC → gene filtering → one PyDESeq2 model per cell type → three comparisons, repeated across four cell-type groupings (Harmony/DRVI, named cell types + raw Leiden clusters). Rerun this to reproduce everything in `results/`.
+- `deg_conditions.ipynb` — main pipeline: pseudobulk aggregation (sum) → sample QC → gene filtering → one PyDESeq2 model per cell type → four comparisons, each repeated across all four cell-type groupings (Harmony/DRVI × named Scanorama-transferred cell types / raw Leiden clusters, both at resolution 1.0 — the h5ad's own `uns['harmony_leiden']['params']` / `uns['drvi_leiden']['params']` confirm this, it's the same clustering used everywhere in this folder). Rerun this to reproduce everything in `results/`.
+- `replot_timepoint_vs_ccs.py` — regenerates the heatmap + volcano plots for Comparison 4 (ACS-per-timepoint vs CCS), all four groupings, in a different plot style than the rest of the notebook (matching `sudenaz/fix_and_replot.py`: faceted per-cluster volcano grid, "Cell Type"-labeled heatmap with non-symmetric colorbar, clusters-with-no-hits dropped). Reads the CSVs `deg_conditions.ipynb` already saved — does not rerun DESeq2. Run this after the notebook if Comparison 4's plots need regenerating.
+- `dice_score_harmony_vs_drvi.py` — Dice similarity between `cell_type_Harmony` and `cell_type_DRVI` (both majority-vote label transfers from `cell_type_Scanorama`, onto different clustering solutions), overall and within each of the four ACS-timepoint-vs-CCS populations. Quantifies how much the two integration methods actually agree on cell identity — see `dice_score_Harmony_vs_DRVI_*` outputs.
 - `cohort_overview_qc.ipynb` — cohort/sample overview and DEG-readiness QC (sampling completeness, cell-type composition, pseudobulk sample-size filtering, PCA of pseudobulks, batch confound check). Rerun this to reproduce `qc_panels/`.
 - `deg_metadata_shared.parquet` — per-cell metadata table (patient ID, condition, timepoint, Scanorama/Harmony/DRVI cell-type labels). Join onto `adata.obs` to skip re-deriving cell-type labels or timepoint/condition parsing.
 - `results/` — full gene-level DEG result tables (one CSV per grouping × comparison, all genes, not just significant ones) plus every plot generated from them (volcano, heatmap, fold-change, paired expression, pathway enrichment, pseudobulk QC).
@@ -19,17 +21,25 @@ Cohort design follows Pekayvaz et al. 2024 (*Nat Med*); the DESeq2 pseudobulk an
 1. **ACS vs CCS** — sterile ACS, all timepoints (TP1M–TP4M) vs CCS, blocked by `patient_id`
 2. **ACS vs non-CCS** — sterile ACS (TP1M only) vs non-CCS + Sclerosis, pooled as Control
 3. **Longitudinal** — sterile ACS, TP1M vs TP4M, paired within-patient
+4. **ACS-per-timepoint vs CCS** — sterile ACS at a single timepoint (TP1M, TP2M, TP3M, or TP4M in turn) vs CCS, one comparison per timepoint. Unlike Comparison 1, each ACS patient contributes only one pseudobulk sample here, so no `patient_id` blocking covariate is needed — this also sidesteps the rank-deficiency issue noted below for Comparison 1. Shows whether the ACS-vs-CCS signal is stable across the post-event timeline or concentrated at particular timepoints. Run for all four groupings, so leiden-cluster and Scanorama-named results are directly comparable at each timepoint.
 
 ## Headline results (padj < 0.05, |log2FC| > 1)
 
-| Grouping | ACS vs CCS | ACS vs non-CCS | Longitudinal |
-|---|---|---|---|
-| Harmony_leiden (25 clusters) | 264 | 83 | 173 |
-| Harmony_named (Scanorama labels) | 351 | 57 | 128 |
-| DRVI_leiden (32 clusters) | 333 | 70 | 147 |
-| DRVI_named (Scanorama labels) | 339 | 60 | 128 |
+| Grouping | ACS vs CCS | ACS vs non-CCS | Longitudinal | TP1M vs CCS | TP2M vs CCS | TP3M vs CCS | TP4M vs CCS |
+|---|---|---|---|---|---|---|---|
+| Harmony_leiden (25 clusters) | 260 | 51 | 157 | 105 | 161 | 37 | 136 |
+| Harmony_named (Scanorama labels, 7 testable) | 290 | 57 | 110 | 108 | 195 | 54 | 153 |
+| DRVI_leiden (32 clusters) | 378 | 52 | 152 | 136 | 237 | 39 | 192 |
+| DRVI_named (Scanorama labels, 7 testable) | 344 | 58 | 127 | 126 | 213 | 49 | 182 |
+
+Re-run in full 2026-08-07. Leiden consistently detects more significant genes than the matching named grouping (e.g. DRVI_leiden vs DRVI_named: 378 vs 344 overall, 136 vs 126 at TP1M, 237 vs 213 at TP2M) — expected, since raw clusters are finer-grained and more transcriptionally homogeneous than the 7 broad named types, giving DESeq2 more power per comparison, at the cost of testing more clusters (25–32 vs 7) and a correspondingly larger multiple-testing burden. Not a sign either grouping is wrong — see `dice_score_Harmony_vs_DRVI_*` for how much the two labelings actually agree cell-by-cell.
 
 `results/{grouping}_{comparison}.csv` columns: `gene`, `baseMean`, `log2FoldChange`, `lfcSE`, `stat`, `pvalue`, `padj`, `cell_type`, `significant`.
+
+## Heatmaps and volcano plots
+
+- **Comparisons 1–3** (`heatmap_{grouping}_{comparison}.png`, `volcano_{grouping}_{comparison}.png`, all four groupings): top 5 most upregulated + top 5 most downregulated significant genes per cluster (ranked by log2FoldChange, not padj), log2FC colored `RdBu_r`, symmetric colorbar; volcano is a faceted grid, one panel per cluster, with the top genes by padj labeled.
+- **Comparison 4** (all four groupings): same top-5-up/top-5-down selection, but plotted by `replot_timepoint_vs_ccs.py` in a different style — non-symmetric colorbar (`center=0`, auto-scaled to the data), clusters with no significant hits dropped from the heatmap entirely, and volcano panels titled `Cluster {name}` with `up (N)`/`down (N)` legend counts. Matches the look of `sudenaz/fix_and_replot.py`, used for the ACS-subgroup analysis. For the leiden groupings, "cluster name" is the raw numeric cluster ID (e.g. `0`–`24` for Harmony_leiden), not a cell type label.
 
 ## Known limitations / open items for whoever continues this
 

@@ -1,0 +1,20 @@
+paper_cluster_int,type,n_cells,n_patient_timepoint_samples,excluded
+0,T-cell-CD4,22011,119,False
+1,T-cell-CD8,13666,119,False
+2,T-cell-CD4,17114,119,False
+3,NK,13095,119,False
+4,Monocytes - CD14,2646,108,False
+5,T-cell-CD4,11366,119,False
+6,Monocytes - CD14,9167,119,False
+7,Monocytes - CD14,5971,119,False
+8,B-cell,5726,118,False
+9,Monocytes - CD16_FCGR3A,2319,115,False
+10,B-cell,1208,97,False
+11,T-cell-CD4,2384,119,False
+12,Monocytes - CD16_FCGR3A,542,87,False
+13,Dendritic,989,113,False
+14,Other,268,87,True
+15,Plasma Blast,589,106,True
+16,Plasma Blast,140,56,True
+17,Progenitor,243,97,True
+18,Megakaryocytes,60,45,True

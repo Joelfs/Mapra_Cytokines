@@ -1,0 +1,15 @@
+cluster,n_cells,majority_scanorama_label,purity_pct
+0,16077,Monocytes - CD14,99.5
+1,14307,T-cell-CD4,98.8
+2,13594,NK,91.4
+3,13405,T-cell-CD8,89.2
+4,13287,T-cell-CD4,96.8
+5,12804,T-cell-CD4,99.4
+6,12105,T-cell-CD4,98.9
+7,6913,B-cell,99.8
+8,2947,Monocytes - CD16_FCGR3A,95.1
+9,1939,Monocytes - CD14,77.4
+10,1099,Dendritic,88.4
+11,576,Plasma Blast,99.7
+12,358,Progenitor,63.7
+13,93,Megakaryocytes,62.4

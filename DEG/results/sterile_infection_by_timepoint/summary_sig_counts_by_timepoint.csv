@@ -1,0 +1,9 @@
+grouping,timepoint,significant
+DRVI_leiden,TP1M,4
+DRVI_leiden,TP2M,3
+DRVI_leiden,TP3M,10
+DRVI_leiden,TP4M,3
+Harmony_leiden,TP1M,3
+Harmony_leiden,TP2M,0
+Harmony_leiden,TP3M,5
+Harmony_leiden,TP4M,0

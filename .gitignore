@@ -6,3 +6,9 @@
 *.txt
 /data
 _not_for_push/
+
+# Exceptions: the final DEG figures/tables actually belong in the repo
+!DEG/paper_findings/PAPER_FIGURES/main/*.png
+!DEG/paper_findings/PAPER_FIGURES/supplementary/*.png
+!DEG/paper_findings/PAPER_FIGURES/supplementary/*.csv
+!DEG/paper_findings/source_data/*.csv

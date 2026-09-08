@@ -3,21 +3,30 @@
 Visualization of the Random Forest results (rf_condition_classifier.py,
 --split stratified, and rf_timepoint_classifier.py from ml_models/).
 
+Both RF models are now trained PER CELL (no pseudobulk averaging) with
+predictions aggregated to patient/sample level via majority vote for
+evaluation — see the docstrings in rf_condition_classifier.py /
+rf_timepoint_classifier.py. The accuracy/F1/confusion-matrix numbers read
+here are the majority-vote (patient/sample-level) ones, for comparability
+with the earlier pseudobulk results.
+
 For each of the two models, an overview figure is produced with:
   1. Validation accuracy per CV fold (+ mean) compared to the
-     test-holdout accuracy
+     test-holdout accuracy (patient/sample-level, majority vote)
   2. Most important (decisive) DRVI factors, via SHAP (mean |SHAP value|,
      TreeExplainer) — same approach as plot_xgb_results.py, so RF and
      XGBoost are directly comparable. Computed here (not by the training
-     scripts): loads the saved RF model (rf_*.joblib) and rebuilds the
-     CV-pool pseudobulk feature matrix straight from the split h5ad, then
-     runs shap.TreeExplainer on it.
+     scripts): loads the saved RF model (rf_*.joblib) and a random
+     fixed-seed subsample of CV-pool CELLS straight from the split h5ad
+     (the model was trained on individual cells, so it is explained on
+     individual cells too — a full CV-pool explanation would be tens of
+     thousands of cells and far too slow for TreeExplainer).
   3. Labeled confusion matrix (rows=true class, columns=prediction)
 
 Additionally:
   - rf_accuracy_summary.csv: CV mean/std vs. test accuracy, both models
   - rf_shap_values_<name>.csv: mean |SHAP value| per factor and class
-    (+ overall mean), CV-pool only
+    (+ overall mean), CV-pool cell subsample only
   - rf_condition_stratified_confusion_readable.csv /
     rf_timepoint_confusion_readable.csv: long-format table
     (true_label, predicted_label, count), from which statements like
@@ -57,22 +66,27 @@ MODELS = {
         "cv_metrics": os.path.join(ML_DIR, "rf_cv_fold_metrics_stratified.csv"),
         "test_report": os.path.join(ML_DIR, "rf_test_holdout_report_stratified.txt"),
         "model_path": os.path.join(ML_DIR, "rf_condition_classifier_stratified.joblib"),
-        "level": "patient",
         "holdout_col": "holdout_stratified",
-        "fold_col": "cv_fold_stratified",
     },
     "timepoint": {
         "title": "Timepoint (TP1-TP4, ACS_sterile)",
         "cv_metrics": os.path.join(ML_DIR, "rf_timepoint_cv_fold_metrics.csv"),
         "test_report": os.path.join(ML_DIR, "rf_timepoint_test_holdout_report.txt"),
         "model_path": os.path.join(ML_DIR, "rf_timepoint_classifier.joblib"),
-        "level": "sample",
         "holdout_col": "holdout_timepoint",
-        "fold_col": "cv_fold_timepoint",
     },
 }
 
 TOP_N_FACTORS = 15
+# TreeExplainer's cost scales with the number of explained rows (roughly
+# linearly here, ~0.12s/cell at max_depth=10) and the CV-pool has 43k-64k
+# cells, so a random fixed-seed subsample is used to keep runtime reasonable
+# (~2-4 min/model at 2000 cells). Each explained cell still gets an EXACT
+# Shapley value (see compute_shap_importances) -- the subsampling only means
+# the aggregate "mean |SHAP value|" ranking is a sample estimate over 2000
+# cells rather than the full CV-pool, not that individual values are approximate.
+SHAP_SAMPLE_SIZE = 2000
+SHAP_RANDOM_STATE = 0
 
 
 def parse_test_report(path):
@@ -109,40 +123,40 @@ def confusion_to_readable(cm_df):
     return pd.DataFrame(rows)
 
 
-def build_pseudobulk_features(adata, level, holdout_col, fold_col):
-    """Rebuilds the same CV-pool pseudobulk matrix the training script used
-    (patient-level for 'patient', sample.timepoint-level for 'sample'),
-    restricted to rows with holdout != 'excluded'."""
-    factors = list(adata.uns["X_drvi_active_dims"])
-    sample_id = adata.obs["sample_id"].astype(str)
-    group_key = sample_id if level == "sample" else sample_id.str.split(".", n=1).str[0]
-
-    feat_df = pd.DataFrame(np.asarray(adata.obsm["X_drvi"]), columns=factors, index=adata.obs_names)
-    feat_df["_group"] = group_key.values
-    feat_df["holdout"] = adata.obs[holdout_col].astype(str).values
-    feat_df["cv_fold"] = adata.obs[fold_col].values
-
-    agg = feat_df.groupby("_group", observed=True).agg(
-        {**{f: "mean" for f in factors}, "holdout": "first", "cv_fold": "first"}
-    )
-    agg = agg[agg["holdout"] != "excluded"]
-    return agg, factors
+def sample_cv_pool_cells(adata, holdout_col, factors, n=SHAP_SAMPLE_SIZE, random_state=SHAP_RANDOM_STATE):
+    """Random fixed-seed subsample of CV-pool cells (holdout == 'cv'), in the
+    same per-cell feature space the (no-pseudobulk) RF model was trained on."""
+    holdout = adata.obs[holdout_col].astype(str).values
+    cv_idx = np.flatnonzero(holdout == "cv")
+    if len(cv_idx) > n:
+        rng = np.random.default_rng(random_state)
+        cv_idx = np.sort(rng.choice(cv_idx, size=n, replace=False))
+    X = pd.DataFrame(np.asarray(adata.obsm["X_drvi"])[cv_idx], columns=factors,
+                     index=adata.obs_names[cv_idx])
+    return X
 
 
 def compute_shap_importances(name, cfg, adata):
-    """SHAP feature importance (TreeExplainer, not Gini) on the CV-pool —
-    same method as xgb_condition_classifier.py / plot_xgb_results.py."""
+    """SHAP feature importance (TreeExplainer, not Gini) on a CV-pool cell
+    subsample — same method as xgb_condition_classifier.py / plot_xgb_results.py.
+
+    Uses shap.TreeExplainer's default feature_perturbation="tree_path_dependent",
+    which is the EXACT polynomial-time Tree SHAP algorithm (Lundberg, Erion &
+    Lee 2018) -- not Kernel SHAP or any Monte Carlo approximation. Left with
+    check_additivity's default (True): shap verifies for every explained row
+    that sum(shap_values) + expected_value reproduces the model's raw output
+    to within numerical tolerance, and raises if it doesn't -- so a clean run
+    here is a direct correctness check on the returned values, not just an
+    assumption."""
     print(f"\n=== SHAP values ({name}) ===")
     bundle = joblib.load(cfg["model_path"])
     model = bundle["model"]
     classes = bundle["classes"]
+    factors = bundle["factors"]
 
-    pseudobulk, factors = build_pseudobulk_features(
-        adata, cfg["level"], cfg["holdout_col"], cfg["fold_col"]
-    )
-    cv_mask = pseudobulk["holdout"] == "cv"
-    X_cv = pseudobulk.loc[cv_mask, factors]
-    print(f"CV-pool for SHAP: {X_cv.shape[0]} rows x {X_cv.shape[1]} factors")
+    X_cv = sample_cv_pool_cells(adata, cfg["holdout_col"], factors)
+    print(f"CV-pool cell subsample for SHAP: {X_cv.shape[0]} cells x {X_cv.shape[1]} factors "
+          f"(random subsample, seed={SHAP_RANDOM_STATE})")
 
     explainer = shap.TreeExplainer(model)
     shap_values = np.asarray(explainer.shap_values(X_cv))

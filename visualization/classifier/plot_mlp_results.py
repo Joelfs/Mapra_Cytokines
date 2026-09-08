@@ -136,8 +136,8 @@ def plot_model(name, cfg):
     ax = axes[1]
     top = importances.sort_values(ascending=False).head(TOP_N_FACTORS).sort_values(ascending=True)
     ax.barh(top.index, top.values, color="#55A868")
-    ax.set_xlabel("mean permutation importance (Δ f1_macro)")
-    ax.set_title(f"Top {len(top)} decisive DRVI factors (Permutation Importance)")
+    ax.set_xlabel("mean |SHAP value|")
+    ax.set_title(f"Top {len(top)} decisive DRVI factors (SHAP)")
 
     # ── Panel 3: Labeled confusion matrix ─────────────────────────────────────
     ax = axes[2]

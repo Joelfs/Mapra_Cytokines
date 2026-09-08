@@ -13,6 +13,7 @@ This folder is set up so someone else can pick up the analysis without re-derivi
 - `deg_metadata_shared.parquet` — per-cell metadata table (patient ID, condition, timepoint, Scanorama/Harmony/DRVI cell-type labels). Join onto `adata.obs` to skip re-deriving cell-type labels or timepoint/condition parsing.
 - `results/` — full gene-level DEG result tables (one CSV per grouping × comparison, all genes, not just significant ones) plus every plot generated from them (volcano, heatmap, fold-change, paired expression, pathway enrichment, pseudobulk QC).
 - `qc_panels/` — cohort/sample-level QC plots (patient×timepoint completeness, cell-type composition per sample, pseudobulk sample-size filtering, PCA of pseudobulks + metadata correlation, batch×condition crosstab, per-sample QC metrics).
+- `paper_findings/` — **the write-up layer**: the subset of these results selected for the paper, as finished figures with legends, plus the two reports. Start with `paper_findings/DEG_results_report.pdf` (main results as results-section prose, figure by figure — the document to write from); `paper_findings/DEG_story_report.pdf` alongside it is the internal record of source decisions, corrections and caveats. See `paper_findings/README.md` for the folder guide and the canonical-source decision.
 
 ## Comparisons run
 
@@ -31,6 +32,8 @@ Cohort design follows Pekayvaz et al. 2024 (*Nat Med*); the DESeq2 pseudobulk an
 | Harmony_named (Scanorama labels, 7 testable) | 290 | 57 | 110 | 108 | 195 | 54 | 153 |
 | DRVI_leiden (32 clusters) | 378 | 52 | 152 | 136 | 237 | 39 | 192 |
 | DRVI_named (Scanorama labels, 7 testable) | 344 | 58 | 127 | 126 | 213 | 49 | 182 |
+
+> **Note (2026-09-07):** the DRVI_named ACS-vs-CCS figure in this table (344) does not match the CSV it describes — `results/DRVI_named_ACS_vs_CCS.csv` contains **339** rows with `significant == True`, and recomputing padj<0.05 & |log2FC|>1 from that file also gives 339 (Monocytes-CD14 157, Monocytes-CD16 58, B-cell 54, NK 27, T-CD4 23, T-CD8 15, Dendritic 5). The table appears to predate the current CSVs by a small margin. Numbers quoted in `paper_findings/` are taken from the CSVs, not from this table.
 
 Re-run in full 2026-08-07. Leiden consistently detects more significant genes than the matching named grouping (e.g. DRVI_leiden vs DRVI_named: 378 vs 344 overall, 136 vs 126 at TP1M, 237 vs 213 at TP2M) — expected, since raw clusters are finer-grained and more transcriptionally homogeneous than the 7 broad named types, giving DESeq2 more power per comparison, at the cost of testing more clusters (25–32 vs 7) and a correspondingly larger multiple-testing burden. Not a sign either grouping is wrong — see `dice_score_Harmony_vs_DRVI_*` for how much the two labelings actually agree cell-by-cell.
 
